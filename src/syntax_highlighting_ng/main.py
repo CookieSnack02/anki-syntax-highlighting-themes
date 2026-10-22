@@ -29,7 +29,7 @@ from aqt.qt import QAction, QApplication
 from aqt.utils import showWarning, tooltip
 
 from . import config, html_render, themes
-from .consts import ICON_PATH
+from .consts import EDITOR_JS_PATH, ICON_PATH
 
 # Anki 26.x ships two editors: the legacy one (aqt.editor.Editor, still the
 # default) and the new SvelteKit one (aqt.editor.NewEditor, behind the
@@ -125,7 +125,7 @@ def _select(elm_id: str, cmd: str, tip: str, options: list[tuple[str, str]], cur
         for value, label in options
     )
     # no inline onchange: the editor's Content-Security-Policy blocks inline
-    # handlers, the change events are caught by SELECT_LISTENER_JS instead
+    # handlers, the change events are caught by editor.js instead
     return (
         f'<select id="{elm_id}" data-sh-cmd="{cmd}" '
         f'title="{html.escape(tip, quote=True)}" '
@@ -135,23 +135,14 @@ def _select(elm_id: str, cmd: str, tip: str, options: list[tuple[str, str]], cur
     )
 
 
-# Delegated listener for our <select>s. It is run through web.eval, which is
-# not subject to the page CSP, and works whenever the toolbar gets rendered.
-SELECT_LISTENER_JS = """
-(function () {
-    if (window.__shSelectListener) { return; }
-    window.__shSelectListener = true;
-    document.addEventListener("change", function (event) {
-        var el = event.target;
-        var cmd = el && el.getAttribute && el.getAttribute("data-sh-cmd");
-        if (cmd) { pycmd(cmd + ":" + el.value); }
-    }, true);
-})();
-"""
+# Editor-side helper (window.__sh), see editor.js. It is run through web.eval,
+# which is not subject to the page CSP.
+with open(EDITOR_JS_PATH, encoding="utf-8") as _f:
+    EDITOR_JS = _f.read()
 
 
 def on_editor_init(ed: Editor) -> None:
-    ed.web.eval(SELECT_LISTENER_JS)
+    ed.web.eval(EDITOR_JS)
 
 
 def on_editor_buttons(buttons: list[str], ed: Editor) -> None:
@@ -210,6 +201,64 @@ def refresh_editors_theme(theme_key: str) -> None:
             pass
 
 
+# Editor state: the JS side (editor.js) gives the focus back to the last field
+# and reports the highlighted blocks under the caret/selection.
+
+
+def with_editor_state(ed: Editor, callback: Callable[[dict], None]) -> None:
+    def on_state(state: Any) -> None:
+        try:
+            callback(state if isinstance(state, dict) else {"ok": False})
+        except html_render.RenderError as e:
+            log.warning("".join(traceback.format_exc()))
+            show_error(e.render(), parent=ed.parentWindow)
+
+    ed.web.evalWithCallback("window.__sh ? __sh.prepare() : {ok: false}", on_state)
+
+
+def current_alias(ed: Editor) -> str:
+    lang = getattr(ed, "_sh_lang", None) or config.get_synced()["lang"]
+    alias = LANGUAGES_MAP.get(lang)
+    if not alias:
+        raise html_render.LanguageNotFound(lang)
+    return alias
+
+
+def make_style(conf: dict, language: str, theme: str) -> html_render.Style:
+    return html_render.Style(
+        language=language,
+        style=theme,
+        linenos=bool(conf["linenos"]),
+        # css classes take less space and are customizable, but require the
+        # theme css (see the options dialog) in every note type using code
+        noclasses=not conf["cssclasses"],
+        center=bool(conf["centerfragments"]),
+    )
+
+
+def rerender_blocks(
+    ed: Editor, blocks: list[dict], theme: str | None = None, language: str | None = None
+) -> None:
+    """Replace existing blocks (instead of nesting a new one inside them).
+
+    theme/language: the new value; when None, each block keeps its own.
+    """
+    conf = config.get_synced()
+    htmls: list[str | None] = []
+    for block in blocks:
+        code = (block.get("code") or "").replace(chr(0xA0), " ")
+        if not code.strip():
+            htmls.append(None)
+            continue
+        style = make_style(
+            conf,
+            language=language or block.get("lang") or current_alias(ed),
+            theme=theme or block.get("theme") or conf["style"],
+        )
+        htmls.append(html_render.render_block(code, style, trailing_br=False))
+    ed.web.eval(f"__sh.replace({json.dumps(htmls)});")
+
+
 @ui_code
 def on_lang_select(ed: Editor, lang: str) -> None:
     if lang not in LANGUAGES_MAP:
@@ -217,13 +266,28 @@ def on_lang_select(ed: Editor, lang: str) -> None:
     ed._sh_lang = lang  # type: ignore[attr-defined]
     set_default_lang(lang)
 
+    def on_state(state: dict) -> None:
+        if state.get("ok") and state.get("blocks"):
+            rerender_blocks(ed, state["blocks"], language=LANGUAGES_MAP[lang])
+
+    with_editor_state(ed, on_state)
+
 
 @ui_code
 def on_theme_select(ed: Editor, theme_key: str) -> None:
     if not themes.is_valid(theme_key):
         raise html_render.InvalidStyle(theme_key)
     config.update_synced(style=theme_key)
-    tooltip(f"Tema: {themes.theme_label(theme_key)}", parent=ed.parentWindow)
+    label = themes.theme_label(theme_key)
+
+    def on_state(state: dict) -> None:
+        if state.get("ok") and state.get("blocks"):
+            rerender_blocks(ed, state["blocks"], theme=theme_key)
+            tooltip(f"Tema {label} aplicado ao bloco", parent=ed.parentWindow)
+        else:
+            tooltip(f"Tema: {label}", parent=ed.parentWindow)
+
+    with_editor_state(ed, on_state)
 
 
 def on_js_message(handled: tuple[bool, Any], message: str, context: Any) -> tuple[bool, Any]:
@@ -242,21 +306,26 @@ def on_js_message(handled: tuple[bool, Any], message: str, context: Any) -> tupl
 # Actual code highlighting
 
 
-@ui_code
 def highlight_code(ed: Editor) -> None:
-    if ed.last_field_index is None:
+    with_editor_state(ed, functools.partial(_highlight_code, ed))
+
+
+def _highlight_code(ed: Editor, state: dict) -> None:
+    if not state.get("ok"):
         tooltip("Clique em um campo antes de inserir o código.", parent=ed.parentWindow)
         return
 
     conf = config.get_synced()
-    lang = getattr(ed, "_sh_lang", None) or conf["lang"]
-    alias = LANGUAGES_MAP.get(lang)
-    if not alias:
-        raise html_render.LanguageNotFound(lang)
+
+    # The caret/selection is on existing blocks: apply the current theme to
+    # them, instead of highlighting the highlighted html again
+    if state.get("blocks"):
+        rerender_blocks(ed, state["blocks"], theme=conf["style"])
+        return
 
     # Selected text first, clipboard otherwise. The selection may contain
     # non-breaking spaces (U+00A0) which confuse the formatter.
-    code = ed.web.selectedText() or QApplication.clipboard().text()
+    code = state.get("selected") or QApplication.clipboard().text()
     code = code.replace(chr(0xA0), " ")
     if not code.strip():
         tooltip(
@@ -265,33 +334,12 @@ def highlight_code(ed: Editor) -> None:
         )
         return
 
-    style = html_render.Style(
-        language=alias,
-        style=conf["style"],
-        linenos=bool(conf["linenos"]),
-        # css classes take less space and are customizable, but require the
-        # theme css (see the options dialog) in every note type using code
-        noclasses=not conf["cssclasses"],
-        center=bool(conf["centerfragments"]),
-    )
+    style = make_style(conf, language=current_alias(ed), theme=conf["style"])
     pretty_code = html_render.render_block(code, style)
-    insert_html(ed, pretty_code)
-
-
-def insert_html(ed: Editor, html_: str) -> None:
-    # Picking a theme/language in the toolbar <select> moves the focus out of
-    # the field, and inserthtml needs a focused field: give it back first.
-    last_field = getattr(ed, "last_field_index", None)
-    if getattr(ed, "currentField", None) is None and last_field is not None:
-        ed.web.eval(f"focusField({int(last_field)});")
-
-    # internal=True: the editor keeps the inline colors
-    if hasattr(ed, "doPaste"):
-        ed.doPaste(html_, internal=True, extended=False)
-    else:
-        # NewEditor (Anki 26+) has no doPaste, but its page exposes the same
-        # pasteHTML(html, internal, extended) global as the legacy editor
-        ed.web.eval(f"pasteHTML({json.dumps(html_)}, true, false);")
+    # pasteHTML(html, internal=true): the editor keeps the inline colors, and
+    # it goes through execCommand, so Ctrl+Z removes the block again. Both the
+    # legacy editor and the NewEditor of Anki 26 expose it.
+    ed.web.eval(f"__sh.insert({json.dumps(pretty_code)});")
 
 
 # Options

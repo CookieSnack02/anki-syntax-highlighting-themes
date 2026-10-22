@@ -93,16 +93,55 @@ def render_string(txt: str, style: Style = Style()) -> str:
     except ClassNotFound as exc:
         raise LanguageNotFound(style.language) from exc
 
-    return pygments.highlight(txt, lexer, _formatter(style))
+    formatter = _formatter(style)
+    out = pygments.highlight(txt, lexer, formatter)
+    if style.noclasses:
+        # mark the inline line numbers, so the code can be recovered from the
+        # field later (eg. to change the theme of an existing block)
+        for line_css in (formatter._linenos_style, formatter._linenos_special_style):
+            out = out.replace(
+                f'<span style="{line_css}">', f'<span class="{LINENO_CLASS}" style="{line_css}">'
+            )
+        out = _STYLE_ATTR.sub(lambda m: f'style="{_nudge_colors(m.group(1))}"', out)
+    return out
 
 
-def render_block(txt: str, style: Style = Style()) -> str:
+# Chromium's insertHTML drops inline colors equal to the editor defaults (pure
+# white background, pure black text), and the card would then lose them (eg. in
+# night mode). Visually identical colors are kept. Only style attributes are
+# touched: the code itself is html-escaped text and never contains style="".
+_STYLE_ATTR = re.compile(r'style="([^"]*)"')
+_PURE_COLORS = (
+    (re.compile(r"#(?:ffffff|fff)\b", re.I), "#fefefe"),
+    (re.compile(r"#(?:000000|000)\b", re.I), "#010101"),
+)
+
+
+def _nudge_colors(css: str) -> str:
+    for pattern, replacement in _PURE_COLORS:
+        css = pattern.sub(replacement, css)
+    return css
+
+
+# Marks a highlighted block in a field, with the data needed to re-render it
+BLOCK_CLASS = "sh-block"
+LINENO_CLASS = "sh-ln"
+
+
+def render_block(txt: str, style: Style = Style(), trailing_br: bool = True) -> str:
     """Highlight txt and wrap it into html ready to be inserted in a field"""
     processed = render_string(txt, style)
     table_css = ' style="margin-left: auto; margin-right: auto;"' if style.center else ""
+    attrs = (
+        f'class="{BLOCK_CLASS}" '
+        f'data-sh-lang="{html.escape(style.language, quote=True)}" '
+        f'data-sh-theme="{html.escape(style.style, quote=True)}"'
+    )
     # the table keeps the editor from merging the block with the
     # surrounding text; the trailing <br> lets the user keep typing after it
-    pretty = f"<table{table_css}><tbody><tr><td>{processed}</td></tr></tbody></table><br>"
+    pretty = f"<table {attrs}{table_css}><tbody><tr><td>{processed}</td></tr></tbody></table>"
+    if trailing_br:
+        pretty += "<br>"
     return process_html(pretty)
 
 

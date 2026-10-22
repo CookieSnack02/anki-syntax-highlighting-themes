@@ -1,5 +1,23 @@
 # Changelog
 
+## 1.2.0 — 2026-10-22
+
+- Trocar o tema com o cursor dentro de um bloco **altera o bloco no lugar**, em vez de
+  sobrepor um bloco novo. O mesmo vale para a linguagem e para o botão CH. O código, as
+  edições feitas nele e a numeração de linhas são mantidos. Blocos das versões 1.0/1.1
+  também são reconhecidos.
+- **Ctrl+Z** desfaz a inserção (e a troca de tema/linguagem de um bloco) também depois de
+  usar as listas da barra. Antes, o editor regravava o campo ao perder o foco e a inserção
+  podia ir para o início do campo.
+- Fundos brancos e textos pretos dos temas claros não são mais descartados pelo editor
+  (`#fefefe`/`#010101`).
+- Blocos marcados (`sh-block`, `data-sh-lang`, `data-sh-theme`, `sh-ln`).
+- `tests/e2e/`: teste ponta a ponta num Anki real (editor legado e novo).
+- Instalar uma versão nova por cima com o Anki aberto funciona no Windows: o Pygments
+  agora vai como pasta (`libs/pygments/`) e não mais como `.whl`, que ficava travado pelo
+  *zipimport* e fazia a instalação falhar com "arquivo em uso". Para sair da 1.0/1.1 é
+  preciso, uma vez, fechar o Anki e apagar a pasta do add-on (veja o README).
+
 ## 1.1.0 — 2026-10-22
 
 - Suporte ao Anki 26.9.3, incluindo o novo editor SvelteKit (`NewEditor`), que não tem

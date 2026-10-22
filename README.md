@@ -12,7 +12,7 @@ parado de funcionar nas versões atuais do Anki.
 
 | | |
 |---|---|
-| **Versão do add-on** | 1.1.0 |
+| **Versão do add-on** | 1.2.0 |
 | **Anki testado** | 26.9.3 (editor legado e editor novo) e 25.9.2 |
 | **Anki mínimo** | 2.1.55 |
 | **Sistemas** | Testado no Windows. É Python puro, sem dependências nativas, então deve funcionar também no macOS e no Linux (não testado) |
@@ -98,9 +98,14 @@ Opção A.
 5. O bloco aparece com cores, fundo do tema e números de linha. Continue digitando abaixo
    dele normalmente.
 
+**Errou o código? Ctrl+Z.** A inserção entra no histórico de desfazer do editor: um
+`Ctrl+Z` logo depois remove o bloco e devolve o campo como estava (inclusive o texto que
+estava selecionado). Vale também para a troca de tema/linguagem de um bloco (seção 3).
+
 Dicas:
 
 - A linguagem escolhida fica **memorizada por baralho** (dá para desligar nas opções).
+- Para refazer um bloco com outro código, basta `Ctrl+Z` e inserir de novo.
 - Sequências que o Anki usa em modelos, como `{{`, `}}` e `::`, são protegidas
   automaticamente, então o código não quebra os seus cartões (nem os *cloze*).
 
@@ -115,9 +120,24 @@ Há dois lugares para trocar o tema:
 - **Em Ferramentas → Syntax Highlighting (temas)…:** a janela de opções tem uma
   **pré-visualização ao vivo** do tema com código de exemplo da linguagem escolhida.
 
-> **Importante:** o tema vale para os blocos **inseridos a partir de então**. As cores
-> ficam gravadas no HTML de cada bloco, então blocos antigos mantêm as cores de quando foram
-> criados. Para trocar o tema de um bloco antigo, apague-o e insira de novo.
+### Trocar o tema de um bloco que já está na nota
+
+O bloco é **alterado no lugar**: ele não ganha um segundo bloco por cima, o código e a
+numeração de linhas continuam iguais, e só as cores mudam.
+
+1. Clique **dentro do bloco** (ou selecione um trecho que inclua um ou mais blocos).
+2. Escolha o novo tema na lista da barra. Aparece *"Tema … aplicado ao bloco"*.
+
+Do mesmo jeito:
+
+- **Trocar a linguagem do bloco:** clique dentro dele e escolha outra linguagem na lista.
+  O bloco é destacado de novo com a linguagem nova e mantém o tema.
+- **Botão CH (ou `Alt+S`) com o cursor dentro de um bloco:** aplica ao bloco o tema
+  atual da barra, em vez de inserir um bloco novo.
+- **Desfazer:** `Ctrl+Z` volta o tema/linguagem anterior.
+
+Isso também funciona com blocos criados pelas versões 1.0 e 1.1 do add-on. Edições que
+você tenha feito no texto do código dentro do bloco são mantidas.
 
 Temas em destaque (aparecem primeiro na lista):
 
@@ -185,6 +205,18 @@ estar no tipo de nota, que também sincroniza.)
 - **Atualizar:** baixe o `.ankiaddon` novo em
   [Releases](https://github.com/CookieSnack02/anki-syntax-highlighting-themes/releases),
   instale por cima (mesmos passos da instalação) e reinicie o Anki. Suas opções são mantidas.
+- **Vindo da 1.0 ou da 1.1 no Windows (uma vez só):** essas versões deixam um arquivo do
+  add-on travado enquanto o Anki está aberto, e instalar por cima falha com
+  *"O arquivo já está sendo usado por outro processo: …pygments-2.21.0-py3-none-any.whl"*.
+  Para atualizar:
+  1. **Feche o Anki.**
+  2. Abra a pasta `%APPDATA%\Anki2\addons21` (cole o caminho na barra do Explorador de
+     Arquivos) e **apague a pasta `syntax_highlighting_ng`**.
+  3. Instale o `.ankiaddon` novo (dois cliques) e reinicie o Anki.
+
+  As opções de tema, linguagem etc. ficam salvas na sua coleção e não se perdem; apenas o
+  `config.json` (atalho, `limitToLangs`), se você o tiver editado, volta ao padrão. A partir
+  da 1.2.0 a atualização funciona normalmente com o Anki aberto.
 - **Desinstalar:** **Ferramentas → Complementos**, selecione
   *Syntax Highlighting (NG) — Temas* → **Excluir**, e reinicie. Os blocos já inseridos
   continuam nas notas, pois são HTML comum.
@@ -197,11 +229,13 @@ estar no tipo de nota, que também sincroniza.)
 |---|---|
 | O botão **CH** e as listas não aparecem | O Anki não foi reiniciado após instalar, ou o add-on está desativado em **Ferramentas → Complementos**. |
 | Aviso de conflito ao instalar | O *Syntax Highlighting* antigo está instalado: desative-o ou exclua-o. |
+| Erro ao instalar por cima: *"O arquivo já está sendo usado por outro processo"* (`pygments-…whl`) | Acontece ao atualizar a partir da 1.0/1.1 no Windows. Siga o passo único da seção 6 (fechar o Anki e apagar a pasta antes de instalar). Depois disso, o botão CH pode ficar sem ícone até a reinstalação, porque a tentativa interrompida apaga parte dos arquivos. |
 | *"Clique em um campo antes de inserir o código."* | Clique dentro de um campo da nota antes de usar **CH**/**Alt+S**. |
 | *"Nada para destacar…"* | Não havia texto selecionado nem texto na área de transferência. |
-| O bloco antigo não mudou de tema | Esperado: o tema vale para os próximos blocos (veja a seção 3). |
+| Escolhi outro tema e o bloco existente não mudou | Clique **dentro** do bloco antes de escolher o tema (seção 3). Sem o cursor num bloco, o tema vale para os próximos blocos. Requer a versão 1.2.0 ou maior. |
+| Ctrl+Z não remove o bloco | Use o `Ctrl+Z` com o cursor no campo, antes de digitar outra coisa. Requer a versão 1.2.0 ou maior: nas anteriores, depois de usar uma lista da barra, a inserção podia ir para o lugar errado. |
 | Blocos sem cor no modo *classes CSS* | Falta colar o CSS do tema no tipo de nota (seção 4). |
-| O tema escolhido não "pega" | Confirme que a versão é 1.1.0 ou maior (**Ferramentas → Complementos**). A 1.0.0 tinha um bug no Anki 26 com o editor novo. |
+| O tema escolhido não "pega" | Confirme a versão em **Ferramentas → Complementos** (use a mais recente). A 1.0.0 tinha um bug no Anki 26 com o editor novo. |
 | Editor novo do Anki 26 | Suportado. Ele abre com `Shift` ao clicar em Adicionar/Editar ou com o experimento *Svelte editor* ligado; o add-on funciona nele e no legado. |
 
 **Onde fica o log:** **Ferramentas → Complementos → Ver arquivos**, depois suba uma pasta e
@@ -219,24 +253,35 @@ Estrutura:
 src/syntax_highlighting_ng/   o add-on (é o conteúdo do .ankiaddon)
   __init__.py                 ponto de entrada; põe o Pygments embutido no sys.path
   main.py                     integração com o Anki (barra do editor, hooks, inserção)
+  editor.js                   lado JS no editor: foco/seleção, blocos sob o cursor,
+                              inserção e substituição via pasteHTML (desfazível)
   html_render.py              renderização pura (sem Anki), testável
   themes.py                   catálogo de temas + temas próprios
   options.py / samples.py     janela de opções com pré-visualização
   config.py                   opções sincronizadas (col.get_config/set_config)
-  libs/                       wheel do Pygments 2.21.0
+  libs/pygments/              Pygments 2.21.0 embutido (pasta, licença BSD)
 tests/test_render.py          testes de renderização (pytest, sem Anki)
 tests/anki_smoke.py           smoke test dentro de um Anki instalado (legado + novo editor)
+tests/e2e/                    teste ponta a ponta num Anki real, controlado via DevTools
 build.py                      gera dist/*.ankiaddon e dist/temas.html
 ```
 
 Comandos:
 
 ```bash
-python -m pip install pytest
+python -m pip install pytest websocket-client
 python -m pytest tests
 python -I tests/anki_smoke.py
+python -I tests/e2e/run.py both
 python build.py
 ```
+
+`tests/e2e/run.py` abre um **Anki de verdade** (os pacotes do Anki instalado, com uma
+pasta-base temporária, então o seu perfil não é tocado; pode rodar com o seu Anki aberto),
+instala o add-on de `src/`, abre *Adicionar* e controla o editor pelo DevTools
+(porta 9333): inserir, `Ctrl+Z`, trocar tema/linguagem de blocos existentes, blocos de
+versões antigas. Use `legacy`, `new` ou `both` (os dois editores do Anki 26). A janela do
+Anki aparece durante o teste.
 
 `tests/anki_smoke.py` carrega o add-on dentro dos pacotes do Anki instalado (padrão:
 `%LOCALAPPDATA%/Programs/Anki/app_packages`, do instalador oficial do Anki 26 no Windows).
@@ -254,16 +299,27 @@ em `CUSTOM_STYLES` e, se quiser destaque, em `FEATURED`.
 - **Hooks modernos** (`gui_hooks.editor_did_init_buttons`, `editor_did_init`,
   `webview_did_receive_js_message`) em vez de *monkey-patch* de `Editor.__init__` /
   `Editor.onBridgeCmd`.
-- **Inserção do HTML** via `Editor.doPaste(..., internal=True)`: o `document.execCommand`
-  antigo não alcança mais os campos (que hoje ficam em Shadow DOM). No `NewEditor` do
-  Anki 26, que não tem `doPaste`, usa a função `pasteHTML` exposta pela página.
+- **Inserção do HTML** pela função `pasteHTML(html, internal=true)` que os dois editores
+  expõem: o `document.execCommand` antigo não alcança mais os campos (que hoje ficam em
+  Shadow DOM). Ela passa pelo `execCommand('insertHTML')`, então entra no histórico de
+  desfazer (**Ctrl+Z**).
+- **Blocos existentes são substituídos, não aninhados:** cada bloco é marcado
+  (`<table class="sh-block" data-sh-lang data-sh-theme>` e números de linha com
+  `class="sh-ln"`), e o código é recuperado do próprio campo para ser redesenhado com o
+  tema/linguagem novos. Blocos das versões anteriores também são reconhecidos.
+- **Posição do cursor guardada como caminho de nós**, não como `Range`: quando o campo
+  perde o foco (ao usar uma lista da barra), o editor regrava o HTML do campo e um `Range`
+  colapsaria para o início.
+- **Branco e preto puros** nos estilos do bloco viram `#fefefe`/`#010101`: o
+  `insertHTML` do Chromium descarta cores iguais às do editor (fundo branco, texto
+  preto), e o cartão perderia essas cores, por exemplo no modo noturno.
 - **Anki 26: dois editores suportados** — o legado (`aqt.editor.Editor`) e o novo
   SvelteKit (`aqt.editor.NewEditor`).
 - **Listas da barra sem `onchange` inline:** o editor é servido com
   Content-Security-Policy, que bloqueia handlers inline; um listener delegado é injetado
   via `web.eval`.
-- **Foco:** depois de usar uma lista da barra, o foco volta ao último campo
-  (`focusField`) antes de inserir o código.
+- **Foco:** depois de usar uma lista da barra, o foco e a seleção voltam ao último campo
+  antes de inserir o código.
 - **Configuração** com `col.get_config/set_config` (`col.setMod()` e a mutação direta de
   `col.conf` não existem mais ou não persistem).
 - **Pygments 2.21.0** embutido; **6 temas próprios**; números de linha esmaecidos;

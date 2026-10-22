@@ -13,12 +13,12 @@ import os
 import sys
 
 from ._version import __version__  # noqa: F401
-from .consts import PYGMENTS_WHEEL
+from .consts import LIBS_PATH
 
 # Always use the shipped pygments library. Anki itself does not bundle
-# pygments, so putting the wheel first on sys.path is enough.
-if PYGMENTS_WHEEL not in sys.path:
-    sys.path.insert(0, PYGMENTS_WHEEL)
+# pygments, so putting libs/ first on sys.path is enough.
+if LIBS_PATH not in sys.path:
+    sys.path.insert(0, LIBS_PATH)
 
 STANDALONE = False
 try:

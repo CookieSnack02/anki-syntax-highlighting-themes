@@ -13,5 +13,9 @@ import os
 
 addon_path = os.path.dirname(__file__)
 
-PYGMENTS_WHEEL = os.path.join(addon_path, "libs", "pygments-2.21.0-py3-none-any.whl")
+# Vendored libraries (pygments 2.21.0), as plain folders: importing from a .whl
+# (zipimport) keeps the file open, and on Windows Anki then cannot delete the
+# add-on folder to update it while it is running.
+LIBS_PATH = os.path.join(addon_path, "libs")
 ICON_PATH = os.path.join(addon_path, "icons", "button.png")
+EDITOR_JS_PATH = os.path.join(addon_path, "editor.js")

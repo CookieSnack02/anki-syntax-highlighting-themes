@@ -84,19 +84,22 @@ assert mw.addonManager.action is main.on_options
 
 
 class FakeWeb:
-    def __init__(self, sel=""):
-        self.js, self.sel = [], sel
+    """Records eval()s; evalWithCallback answers with the next editor.js state"""
 
-    def selectedText(self):
-        return self.sel
+    def __init__(self):
+        self.js, self.state = [], {"ok": False}
 
     def eval(self, js):
         self.js.append(js)
 
+    def evalWithCallback(self, js, cb):
+        assert "__sh.prepare()" in js, js
+        cb(self.state)
 
-def make(cls, sel):
+
+def make(cls):
     ed = cls.__new__(cls)  # real class, no Qt widgets
-    ed.web = FakeWeb(sel)
+    ed.web = FakeWeb()
     ed.parentWindow = mw
     ed.currentField = None
     ed.last_field_index = None
@@ -104,13 +107,17 @@ def make(cls, sel):
     return ed
 
 
+def last_call(ed, fn):
+    """the argument of the last __sh.<fn>(...) eval"""
+    calls = [js for js in ed.web.js if js.startswith(f"__sh.{fn}(")]
+    assert calls, (fn, ed.web.js)
+    return json.loads(calls[-1][len(f"__sh.{fn}("):-2])
+
+
 for cls in main.EDITOR_TYPES:
     name = cls.__name__
     mw.col.store.clear()
-    ed = make(cls, "for i in range(3):\n    print(i)\n")
-    pasted = []
-    if hasattr(cls, "doPaste"):
-        ed.doPaste = lambda h, internal, extended=False: pasted.append((h, internal))
+    ed = make(cls)
 
     buttons = []
     gui_hooks.editor_did_init_buttons(buttons, ed)
@@ -119,7 +126,7 @@ for cls in main.EDITOR_TYPES:
     assert not any("onchange" in b or "onclick" in b for b in buttons), "inline handlers are blocked by the CSP"
     assert 'data-sh-cmd="shLang"' in buttons[1] and 'data-sh-cmd="shTheme"' in buttons[2]
     assert 'value="monokai" selected' in buttons[2]
-    assert any("data-sh-cmd" in js and "pycmd" in js for js in ed.web.js)
+    assert ed.web.js[-1] == main.EDITOR_JS and "window.__sh" in main.EDITOR_JS
 
     # toolbar selects -> python, through the real hook the webview fires
     assert gui_hooks.webview_did_receive_js_message((False, None), "shTheme:dracula", ed) == (True, None)
@@ -128,30 +135,39 @@ for cls in main.EDITOR_TYPES:
     assert config.get_synced()["deckdefaultlang"] == {"Programação": "Java"}
     assert gui_hooks.webview_did_receive_js_message((False, None), "other", ed) == (False, None)
     assert gui_hooks.webview_did_receive_js_message((False, None), "shTheme:dracula", object()) == (False, None)
+    gui_hooks.webview_did_receive_js_message((False, None), "shLang:Python", ed)
 
-    # no field ever focused -> hint, nothing inserted
-    main.highlight_code(ed)
-    assert TOOLTIPS[-1].startswith("Clique em um campo") and not pasted
-
-    # field 1 was focused, then the user clicked the <select> (blur)
-    ed.last_field_index, ed.currentField = 1, None
+    # no field to go back to -> hint, nothing inserted
     ed.web.js.clear()
+    ed.web.state = {"ok": False}
     main.highlight_code(ed)
-    assert ed.web.js[0] == "focusField(1);", ed.web.js
-    if hasattr(cls, "doPaste"):
-        html, internal = pasted[-1]
-        assert internal is True
-    else:
-        assert ed.web.js[1].startswith("pasteHTML(") and ed.web.js[1].endswith(", true, false);")
-        html = json.loads(ed.web.js[1][len("pasteHTML("):-len(", true, false);")])
-    assert "#282a36" in html.lower(), "dracula background"  # theme picked in the toolbar
-    assert ">for</span>" in html and "<table><tbody><tr><td>" in html
+    assert TOOLTIPS[-1].startswith("Clique em um campo") and not ed.web.js
 
-    # field still focused -> no refocus
-    ed.currentField = 1
-    ed.web.js.clear()
+    # selected text -> new block, through __sh.insert (pasteHTML, undoable)
+    ed.web.state = {"ok": True, "selected": "for i in range(3):\n    print(i)\n", "blocks": []}
     main.highlight_code(ed)
-    assert not any(js.startswith("focusField") for js in ed.web.js)
+    html = last_call(ed, "insert")
+    assert "#282a36" in html.lower() and 'data-sh-theme="dracula"' in html and html.endswith("<br>")
+    assert ">for</span>" in html and 'class="sh-ln"' in html
+
+    # caret on an existing block -> replaced with the current theme, not nested
+    block = {"code": "x = 1\n", "lang": "python", "theme": "monokai"}
+    ed.web.state = {"ok": True, "selected": "", "blocks": [block, dict(block, lang=None, theme=None)]}
+    main.highlight_code(ed)
+    htmls = last_call(ed, "replace")
+    assert len(htmls) == 2 and all('data-sh-theme="dracula"' in h and not h.endswith("<br>") for h in htmls)
+    assert all(h.count("<table") == 1 for h in htmls)
+
+    # theme picked with the caret on a block -> that block gets the new theme
+    gui_hooks.webview_did_receive_js_message((False, None), "shTheme:one-dark", ed)
+    htmls = last_call(ed, "replace")
+    assert all('data-sh-theme="one-dark"' in h for h in htmls) and 'data-sh-lang="python"' in htmls[0]
+
+    # language picked with the caret on a block -> new language, block keeps its theme
+    ed.web.state = {"ok": True, "selected": "", "blocks": [block]}
+    gui_hooks.webview_did_receive_js_message((False, None), "shLang:JavaScript", ed)
+    [h] = last_call(ed, "replace")
+    assert 'data-sh-lang="javascript"' in h and 'data-sh-theme="monokai"' in h
     print(f"{name}: OK")
 
 # options dialog (QWebEngine can't render offscreen here: capture the html)
