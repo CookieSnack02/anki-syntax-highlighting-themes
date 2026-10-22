@@ -1,0 +1,10 @@
+# build output (published as release assets)
+dist/
+
+# python
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# written by Anki in the installed add-on folder
+src/syntax_highlighting_ng/meta.json
